@@ -13,7 +13,8 @@ import {
   HelpCircle,
   TrendingUp,
   Briefcase,
-  MessageCircle
+  MessageCircle,
+  Send
 } from "lucide-react";
 import { Employee, GOLONGAN_PNS, WhatsappTemplate } from "../types";
 import { 
@@ -31,6 +32,8 @@ interface ReminderAlertsProps {
   onPromoteSuccess?: (id: string, nextRank: string, promoteDate: string) => void;
   onKgbSuccess?: (id: string, kgbDate: string) => void;
   templates: WhatsappTemplate[];
+  fonnteToken?: string;
+  useFonnteAsDefault?: boolean;
 }
 
 export default function ReminderAlerts({
@@ -39,34 +42,34 @@ export default function ReminderAlerts({
   alertThresholdDays,
   onPromoteSuccess,
   onKgbSuccess,
-  templates
+  templates,
+  fonnteToken,
+  useFonnteAsDefault
 }: ReminderAlertsProps): JSX.Element {
   
   // States
   const [showOnlyWarnings, setShowOnlyWarnings] = useState(true);
+  const [sendLogs, setSendLogs] = useState<Record<string, { status: 'idle' | 'sending' | 'success' | 'error'; message?: string; time?: string }>>({});
 
-  // Helper WA generator
-  const getWhatsappUrl = (
-    employee: Employee, 
-    templateId: string, 
+  // Helper resolved text message generator
+  const getMessageText = (
+    employee: Employee,
+    templateId: string,
     extraData?: { dueDate?: string; daysRemaining?: number; childName?: string; childAge?: string }
   ): string => {
-    const phone = employee.phoneNumber || "";
-    if (!phone) return "";
-
     const template = templates.find(t => t.id === templateId);
     let content = template ? template.content : "";
 
     if (!content) {
       // Fallback contents
       if (templateId === "pangkat") {
-        content = "Halo *{Nama}* (NIP: {NIP}), kami menginfokan bahwa waktu Kenaikan Pangkat (KPG) Anda jatuh pada tanggal *{BatasTanggal}* ({SisaHari} hari lagi). Harap segera mempersiapkan berkas dinas. Terima kasih.";
+        content = "Halo *{Nama}* (NIP: {NIP}), diinformasikan bahwa jadwal Kenaikan Pangkat Anda jatuh pada tanggal *{BatasTanggal}* ({SisaHari} hari lagi). Harap segera mempersiapkan berkas dinas yang diperlukan. Terima kasih.";
       } else if (templateId === "kgb") {
-        content = "Halo *{Nama}* (NIP: {NIP}), kami menginfokan bahwa jadwal Kenaikan Gaji Berkala (KGB) Anda jatuh pada tanggal *{BatasTanggal}* ({SisaHari} hari lagi). Terima kasih.";
+        content = "Halo Bpk/Ibu *{Nama}* (NIP: {NIP}), diinformasikan bahwa jadwal Kenaikan Gaji Berkala (KGB) Anda jatuh pada tanggal *{BatasTanggal}* ({SisaHari} hari lagi). Terima kasih atas dedikasinya.";
       } else if (templateId === "anak-21") {
-        content = "Yth. Bpk/Ibu *{Nama}* (NIP: {NIP}), menginformasikan bahwa anak Anda *{NamaAnak}* akan menginjak usia 21 tahun pada *{BatasTanggal}* ({SisaHari} hari lagi). Untuk melanjutkan tunjangan, serahkan Surat Kuliah aktif.";
+        content = "Yth. Bpk/Ibu *{Nama}* (NIP: {NIP}), diinformasikan bahwa anak Anda *{NamaAnak}* akan menginjak usia 21 tahun pada *{BatasTanggal}* ({SisaHari} hari lagi). Agar tunjangan anak tetap berjalan pada gaji bulanan, mohon segera sampaikan Surat Keterangan Kuliah aktif ke bagian Administrasi.";
       } else if (templateId === "anak-over") {
-        content = "Yth. Bpk/Ibu *{Nama}* (NIP: {NIP}), menginformasikan bahwa anak Anda *{NamaAnak}* telah berusia {UsiaAnak} tahun. Sampaikan Surat Kuliah agar tunjangan dapat diproses.";
+        content = "Yth. Bpk/Ibu *{Nama}* (NIP: {NIP}), menginformasikan bahwa anak Anda *{NamaAnak}* saat ini sudah berusia {UsiaAnak} tahun. Mohon sampaikan pembaruan berkas Surat Keterangan Kuliah aktif agar tunjangan tidak dihentikan otomatis. Terima kasih.";
       }
     }
 
@@ -89,6 +92,20 @@ export default function ReminderAlerts({
       text = text.replace(/{UsiaAnak}/g, extraData.childAge);
     }
 
+    return text;
+  };
+
+  // Helper WA generator
+  const getWhatsappUrl = (
+    employee: Employee, 
+    templateId: string, 
+    extraData?: { dueDate?: string; daysRemaining?: number; childName?: string; childAge?: string }
+  ): string => {
+    const phone = employee.phoneNumber || "";
+    if (!phone) return "";
+
+    const text = getMessageText(employee, templateId, extraData);
+
     // Format phone number
     let cleanedPhone = phone.replace(/[^0-9]/g, "");
     if (cleanedPhone.startsWith("0")) {
@@ -100,6 +117,215 @@ export default function ReminderAlerts({
 
   const handleNoPhone = () => {
     alert("Pegawai ini belum memiliki nomor WhatsApp terdaftar. Silakan edit data pegawai terlebih dahulu di tab 'Manajemen Pegawai'!");
+  };
+
+  const handleSendFonnte = async (
+    employee: Employee,
+    templateId: string,
+    extraData?: { dueDate?: string; daysRemaining?: number; childName?: string; childAge?: string }
+  ) => {
+    const phone = employee.phoneNumber || "";
+    if (!phone) {
+      handleNoPhone();
+      return;
+    }
+
+    const token = localStorage.getItem("sipeka_fonnte_token") || "";
+    if (!token) {
+      alert("Token API Fonnte belum dikonfigurasi! Harap buka tab 'Template Pesan WA' terlebih dahulu untuk memasukkan Token API Fonnte Anda.");
+      return;
+    }
+
+    // Clean phone number
+    let cleanedPhone = phone.replace(/[^0-9]/g, "");
+    const customCode = localStorage.getItem("sipeka_fonnte_code") || "62";
+    if (cleanedPhone.startsWith("0")) {
+      cleanedPhone = customCode + cleanedPhone.substring(1);
+    }
+
+    const text = getMessageText(employee, templateId, extraData);
+    const key = `${employee.id}_${templateId}_${extraData?.childName || ""}`;
+
+    setSendLogs(prev => ({
+      ...prev,
+      [key]: { status: 'sending' }
+    }));
+
+    try {
+      const formData = new FormData();
+      formData.append("target", cleanedPhone);
+      formData.append("message", text);
+      formData.append("countryCode", customCode);
+
+      const response = await fetch("https://api.fonnte.com/send", {
+        method: "POST",
+        headers: {
+          "Authorization": token
+        },
+        body: formData
+      });
+
+      const data = await response.json();
+      const nowTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
+      if (data.status === true || data.status === "true" || data.status === 1 || response.ok) {
+        setSendLogs(prev => ({
+          ...prev,
+          [key]: { 
+            status: 'success', 
+            message: data.detail || "Berhasil dikirim", 
+            time: nowTime 
+          }
+        }));
+        alert(`Sukses! Pesan pengingat otomatis berhasil dikirim langsung via Fonnte Gateway ke ${employee.name} (${cleanedPhone}).`);
+      } else {
+        const errorReason = data.reason || data.detail || "Error API Fonnte";
+        setSendLogs(prev => ({
+          ...prev,
+          [key]: { 
+            status: 'error', 
+            message: errorReason
+          }
+        }));
+        alert(`Gagal mengirim via Fonnte: ${errorReason}. Silakan coba menggunakan tombol tautan WhatsApp manual.`);
+      }
+    } catch (error: any) {
+      console.error("Gagal mengirim via Fonnte:", error);
+      setSendLogs(prev => ({
+        ...prev,
+        [key]: { 
+          status: 'error', 
+          message: error.message || "Kesalahan jaringan"
+        }
+      }));
+      alert(`Gagal mengirim via Fonnte (Kesalahan Jaringan): ${error.message || error}. Silakan coba menggunakan tombol tautan WhatsApp manual.`);
+    }
+  };
+
+  // Centralized action rendering helper
+  const renderNotificationActions = (
+    employee: Employee,
+    templateId: string,
+    extraData?: { dueDate?: string; daysRemaining?: number; childName?: string; childAge?: string }
+  ) => {
+    const key = `${employee.id}_${templateId}_${extraData?.childName || ""}`;
+    const log = sendLogs[key];
+    const waUrl = getWhatsappUrl(employee, templateId, extraData);
+
+    if (!employee.phoneNumber) {
+      return (
+        <button
+          onClick={handleNoPhone}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500 font-bold text-[10px] rounded-lg cursor-pointer border dark:border-zinc-700/50"
+        >
+          <MessageCircle className="w-3.5 h-3.5" /> No WA Kosong
+        </button>
+      );
+    }
+
+    const isSending = log?.status === "sending";
+    const isSuccess = log?.status === "success";
+    const isError = log?.status === "error";
+
+    // If Use Fonnte is active and token is set
+    const hasFonnte = !!fonnteToken;
+
+    if (hasFonnte && useFonnteAsDefault) {
+      return (
+        <div className="flex flex-col sm:flex-row items-end sm:items-center justify-end gap-2">
+          {isSuccess && (
+            <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-1 rounded border border-emerald-100 dark:border-emerald-900/30">
+              ✓ Terkirim {log.time}
+            </span>
+          )}
+          {isError && (
+            <span className="text-[9px] text-rose-605 dark:text-rose-450 font-bold font-mono" title={log.message}>
+              ⚠ Gagal API
+            </span>
+          )}
+          
+          <div className="flex items-center gap-[4px]">
+            <button
+              disabled={isSending}
+              onClick={() => handleSendFonnte(employee, templateId, extraData)}
+              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-xs cursor-pointer ${
+                isSending 
+                  ? "bg-zinc-150 dark:bg-zinc-800 text-zinc-400 cursor-wait"
+                  : isSuccess
+                    ? "bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-350"
+                    : "bg-emerald-600 hover:bg-emerald-700 text-white font-black"
+              }`}
+            >
+              {isSending ? (
+                <>
+                  <span className="w-2.5 h-2.5 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin"></span>
+                  Kirim...
+                </>
+              ) : (
+                <>
+                  <Send className="w-3 h-3" />
+                  {isSuccess ? "Ulang API" : "Kirim Fonnte"}
+                </>
+              )}
+            </button>
+            
+            {/* Fallback WA Web button */}
+            <a
+              href={waUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2 py-1.5 bg-zinc-150 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-750 text-zinc-600 dark:text-zinc-350 rounded-lg text-[10px] font-bold border dark:border-zinc-700/60 flex items-center justify-center cursor-pointer"
+              title="Kirim Manual lewat WhatsApp Web / App"
+            >
+              <MessageCircle className="w-3.5 h-3.5 text-emerald-500" />
+            </a>
+          </div>
+        </div>
+      );
+    }
+
+    // Default layout or when Fonnte is not preferred as default but can still be clicked
+    return (
+      <div className="flex flex-col sm:flex-row items-end sm:items-center justify-end gap-2">
+        {isSuccess && (
+          <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-1 rounded border border-emerald-100 dark:border-emerald-900/30">
+            ✓ Terkirim {log.time}
+          </span>
+        )}
+        
+        <div className="flex items-center gap-1.5">
+          {/* Main WA Link */}
+          <a
+            href={waUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] rounded-lg transition-colors shadow-xs"
+          >
+            <MessageCircle className="w-3.5 h-3.5" /> WA Notif
+          </a>
+
+          {/* Quick background Fonnte Button if token is configured */}
+          {hasFonnte && (
+            <button
+              disabled={isSending}
+              onClick={() => handleSendFonnte(employee, templateId, extraData)}
+              className={`p-1.5 rounded-lg text-[10px] font-bold border transition-all flex items-center justify-center cursor-pointer ${
+                isSending 
+                  ? "bg-zinc-150 text-zinc-450 border-zinc-200 cursor-wait"
+                  : "bg-white hover:bg-zinc-50 border-emerald-500 dark:bg-zinc-900 dark:border-emerald-900 text-emerald-600 hover:text-emerald-700"
+              }`}
+              title="Kirim Instan via Fonnte API di Latar Belakang"
+            >
+              {isSending ? (
+                <span className="w-3.5 h-3.5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></span>
+              ) : (
+                <Send className="w-3.5 h-3.5" />
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+    );
   };
 
   // Calculations
@@ -266,23 +492,7 @@ export default function ReminderAlerts({
                         <td className="px-6 py-4">{getStatusBadge(p.status, p.daysRemaining)}</td>
                         <td className="px-6 py-4 text-right print:hidden">
                           <div className="flex items-center justify-end gap-2">
-                            {p.employee.phoneNumber ? (
-                              <a
-                                href={getWhatsappUrl(p.employee, "pangkat", { dueDate: formatDateIndo(p.dueDate), daysRemaining: p.daysRemaining })}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] rounded-lg transition-colors shadow-xs"
-                              >
-                                <MessageCircle className="w-3.5 h-3.5" /> WA Notif
-                              </a>
-                            ) : (
-                              <button
-                                onClick={handleNoPhone}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-750 text-zinc-500 dark:text-zinc-400 font-bold text-[10px] rounded-lg transition-colors cursor-pointer"
-                              >
-                                <MessageCircle className="w-3.5 h-3.5" /> WA Notif
-                              </button>
-                            )}
+                            {renderNotificationActions(p.employee, "pangkat", { dueDate: formatDateIndo(p.dueDate), daysRemaining: p.daysRemaining })}
 
                             {onPromoteSuccess && (
                               <button
@@ -363,23 +573,7 @@ export default function ReminderAlerts({
                         <td className="px-6 py-4">{getStatusBadge(k.status, k.daysRemaining)}</td>
                         <td className="px-6 py-4 text-right print:hidden">
                           <div className="flex items-center justify-end gap-2">
-                            {k.employee.phoneNumber ? (
-                              <a
-                                href={getWhatsappUrl(k.employee, "kgb", { dueDate: formatDateIndo(k.dueDate), daysRemaining: k.daysRemaining })}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-650 hover:bg-emerald-700 text-white font-bold text-[10px] rounded-lg transition-colors shadow-xs"
-                              >
-                                <MessageCircle className="w-3.5 h-3.5" /> WA Notif
-                              </a>
-                            ) : (
-                              <button
-                                onClick={handleNoPhone}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-750 text-zinc-500 dark:text-zinc-400 font-bold text-[10px] rounded-lg transition-colors cursor-pointer"
-                              >
-                                <MessageCircle className="w-3.5 h-3.5" /> WA Notif
-                              </button>
-                            )}
+                            {renderNotificationActions(k.employee, "kgb", { dueDate: formatDateIndo(k.dueDate), daysRemaining: k.daysRemaining })}
 
                             {onKgbSuccess && (
                               <button
@@ -463,23 +657,7 @@ export default function ReminderAlerts({
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right print:hidden">
-                        {c.employee.phoneNumber ? (
-                          <a
-                            href={getWhatsappUrl(c.employee, "anak-21", { dueDate: formatDateIndo(c.dueDate21), daysRemaining: c.daysRemaining, childName: c.child.name })}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] rounded-lg transition-colors shadow-xs"
-                          >
-                            <MessageCircle className="w-3.5 h-3.5" /> WA Notif
-                          </a>
-                        ) : (
-                          <button
-                            onClick={handleNoPhone}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-750 text-zinc-500 dark:text-zinc-400 font-bold text-[10px] rounded-lg transition-colors cursor-pointer"
-                          >
-                            <MessageCircle className="w-3.5 h-3.5" /> WA Notif
-                          </button>
-                        )}
+                        {renderNotificationActions(c.employee, "anak-21", { dueDate: formatDateIndo(c.dueDate21), daysRemaining: c.daysRemaining, childName: c.child.name })}
                       </td>
                     </tr>
                   ))}
@@ -558,23 +736,7 @@ export default function ReminderAlerts({
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right print:hidden">
-                          {c.employee.phoneNumber ? (
-                            <a
-                              href={getWhatsappUrl(c.employee, "anak-over", { childName: c.child.name, childAge: `${c.age.years}` })}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] rounded-lg transition-colors shadow-xs"
-                            >
-                              <MessageCircle className="w-3.5 h-3.5" /> WA Audit
-                            </a>
-                          ) : (
-                            <button
-                              onClick={handleNoPhone}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-750 text-zinc-500 dark:text-zinc-400 font-bold text-[10px] rounded-lg transition-colors cursor-pointer"
-                            >
-                              <MessageCircle className="w-3.5 h-3.5" /> WA Audit
-                            </button>
-                          )}
+                          {renderNotificationActions(c.employee, "anak-over", { childName: c.child.name, childAge: `${c.age.years}` })}
                         </td>
                       </tr>
                     );

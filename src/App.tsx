@@ -47,7 +47,8 @@ import {
   Sparkles,
   RefreshCw,
   FolderSync,
-  MessageSquare
+  MessageSquare,
+  Settings
 } from "lucide-react";
 
 // Default system WhatsApp templates configuration
@@ -100,7 +101,12 @@ export default function App(): JSX.Element {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
 
   // Settings
-  const [alertThresholdDays, setAlertThresholdDays] = useState(90);
+  const [alertThresholdDays, setAlertThresholdDays] = useState(() => parseInt(localStorage.getItem("sipeka_alert_threshold") || "90") || 90);
+
+  // Fonnte configurations
+  const [fonnteToken, setFonnteToken] = useState(() => localStorage.getItem("sipeka_fonnte_token") || "");
+  const [fonnteCode, setFonnteCode] = useState(() => localStorage.getItem("sipeka_fonnte_code") || "62");
+  const [useFonnteAsDefault, setUseFonnteAsDefault] = useState(() => localStorage.getItem("sipeka_fonnte_default") === "true");
 
   // Direct configuration for unified cloud-server store
   useEffect(() => {
@@ -644,6 +650,16 @@ export default function App(): JSX.Element {
           >
             Pindahkan CSV
           </button>
+          <button
+            onClick={() => setActiveTab("settings")}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "settings"
+                ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-xs"
+                : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300"
+            }`}
+          >
+            Pengaturan
+          </button>
         </nav>
 
       {/* User Badge Controls */}
@@ -726,6 +742,8 @@ export default function App(): JSX.Element {
                 onPromoteSuccess={handlePromoteSuccess}
                 onKgbSuccess={handleKgbSuccess}
                 templates={templates}
+                fonnteToken={fonnteToken}
+                useFonnteAsDefault={useFonnteAsDefault}
               />
             )}
 
@@ -758,6 +776,131 @@ export default function App(): JSX.Element {
         {/* 4. VIEW D: WHATSAPP TEMPLATES EDITOR */}
         {activeTab === "whatsapp" && (
           <div className="space-y-6 animate-in fade-in duration-200 text-left">
+            
+            {/* INTEGRASI FONNTE GATEWAY */}
+            <div className="bg-white dark:bg-zinc-900 border dark:border-zinc-800 p-6 rounded-2xl shadow-sm">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-6 border-b dark:border-zinc-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-emerald-50 dark:bg-emerald-950/25 text-emerald-600 rounded-lg">
+                    <Smartphone className="w-5 h-5 text-emerald-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-900 dark:text-white uppercase tracking-wider">
+                      Integrasi Gateway WhatsApp - Fonnte
+                    </h3>
+                    <p className="text-xs text-zinc-500 mt-0.5">
+                      Kirim pesan pengingat instan langsung ke nomor PNS melalui API Fonnte tanpa repot membuka WhatsApp Web.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 bg-emerald-50/50 dark:bg-emerald-950/30 px-3 py-1 rounded-full border border-emerald-100 dark:border-emerald-900/30">
+                  <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase font-mono tracking-wide">Fonnte API Ready</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 dark:text-zinc-300 uppercase mb-1">
+                    API Token Fonnte
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Masukkan Token Fonnte..."
+                    value={fonnteToken}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFonnteToken(val);
+                      localStorage.setItem("sipeka_fonnte_token", val);
+                    }}
+                    className="w-full p-2.5 border border-zinc-250 dark:border-zinc-850 rounded-xl text-xs bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-150 focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
+                  />
+                  <p className="text-[10px] text-zinc-450 mt-1">
+                    Dapatkan dari menu dashboard di <a href="https://fonnte.com" target="_blank" rel="noopener noreferrer" className="text-emerald-500 hover:underline font-semibold">fonnte.com</a>.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 dark:text-zinc-300 uppercase mb-1">
+                    Kode Negara Default
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="62"
+                    value={fonnteCode}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFonnteCode(val);
+                      localStorage.setItem("sipeka_fonnte_code", val);
+                    }}
+                    className="w-full p-2.5 border border-zinc-250 dark:border-zinc-850 rounded-xl text-xs bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-150 focus:outline-hidden focus:ring-1 focus:ring-emerald-500 font-mono"
+                  />
+                  <p className="text-[10px] text-zinc-450 mt-1">
+                    Isi dengan <span className="font-mono">62</span> untuk Indonesia. Otomatis mengubah angka awalan <span className="font-mono">08xxx</span> ke <span className="font-mono">628xxx</span>.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 dark:text-zinc-300 uppercase mb-1">
+                    Opsi Pengiriman Utama
+                  </label>
+                  <div className="flex flex-col space-y-2 mt-2">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-zinc-700 dark:text-zinc-350 select-none">
+                      <input
+                        type="checkbox"
+                        checked={useFonnteAsDefault}
+                        onChange={(e) => {
+                          const val = e.target.checked;
+                          setUseFonnteAsDefault(val);
+                          localStorage.setItem("sipeka_fonnte_default", String(val));
+                        }}
+                        className="rounded-sm border-zinc-250 dark:border-zinc-800 text-emerald-600 cursor-pointer h-4 w-4 accent-emerald-500"
+                      />
+                      Gunakan Fonnte (Kirim Otomatis)
+                    </label>
+                    <p className="text-[10px] text-zinc-450">
+                      Jika dicentang, tombol pengingat WA akan menembak API Fonnte via HTTP request di latar belakang.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Fonnte account status utility button */}
+              <div className="mt-6 pt-4 border-t dark:border-zinc-800 flex flex-wrap gap-3 items-center justify-between">
+                <div className="text-[10px] text-zinc-400 max-w-md">
+                  <strong>Tips Uji Coba:</strong> Masukkan Token dan klik tombol di samping kanan untuk memeriksa status perangkat Anda di server Fonnte.
+                </div>
+                
+                <button
+                  onClick={async () => {
+                    if (!fonnteToken) {
+                      alert("Silakan isi Token API Fonnte Anda terlebih dahulu.");
+                      return;
+                    }
+                    try {
+                      const response = await fetch("https://api.fonnte.com/device", {
+                        method: "POST",
+                        headers: {
+                          "Authorization": fonnteToken
+                        }
+                      });
+                      const resData = await response.json();
+                      if (resData.status === true || resData.status === "true") {
+                        alert(`Koneksi Sukses!\nNama Perangkat: ${resData.name || "-"}\nNomor: ${resData.device || "-"}\nStatus: ${resData.device_status || "-"}`);
+                      } else {
+                        alert(`Respons Gagal Terkoneksi: ${resData.reason || resData.detail || "Cek kembali keabsahan token Anda di panel Fonnte."}`);
+                      }
+                    } catch (e: any) {
+                      alert(`Kesalahan pengujian koneksi: ${e.message || e}`);
+                    }
+                  }}
+                  className="px-4 py-2 bg-zinc-100 hover:bg-zinc-205 dark:bg-zinc-800 dark:hover:bg-zinc-750 text-zinc-800 dark:text-zinc-200 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer border dark:border-zinc-700"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Uji Koneksi Token Fonnte
+                </button>
+              </div>
+            </div>
+
             <div className="bg-white dark:bg-zinc-900 border dark:border-zinc-800 p-6 rounded-2xl shadow-sm">
               <div className="flex items-center gap-2.5 mb-2">
                 <div className="p-2 bg-emerald-50 dark:bg-emerald-950/25 text-emerald-600 rounded-lg">
@@ -833,6 +976,97 @@ export default function App(): JSX.Element {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 5. VIEW E: SETTINGS PANEL */}
+        {activeTab === "settings" && (
+          <div className="space-y-6 animate-in fade-in duration-200 text-left">
+            <div className="bg-white dark:bg-zinc-900 border dark:border-zinc-800 p-6 rounded-2xl shadow-sm">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-6 border-b dark:border-zinc-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-emerald-50 dark:bg-emerald-950/25 text-emerald-600 rounded-lg">
+                    <Settings className="w-5 h-5 text-emerald-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-900 dark:text-white uppercase tracking-wider">
+                      Pengaturan Waktu Notifikasi & Alarm
+                    </h3>
+                    <p className="text-xs text-zinc-500 mt-0.5">
+                      Modifikasi batas waktu alarm peringatan (alert threshold) untuk pemicu notifikasi pangkat, gaji berkala (KGB), dan tunjangan anak.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 bg-emerald-50/50 dark:bg-emerald-950/30 px-3 py-1 rounded-full border border-emerald-100 dark:border-emerald-900/30">
+                  <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase font-mono tracking-wide">Konfigurasi Aktif</span>
+                </div>
+              </div>
+
+              <div className="max-w-xl space-y-6">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 dark:text-zinc-300 uppercase mb-2">
+                    Batas Waktu Alarm Peringatan (Hari)
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min={10}
+                      max={365}
+                      value={alertThresholdDays}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value) || 90;
+                        setAlertThresholdDays(val);
+                        localStorage.setItem("sipeka_alert_threshold", String(val));
+                      }}
+                      className="w-32 p-2.5 border border-zinc-250 dark:border-zinc-850 rounded-xl text-xs bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-150 focus:outline-hidden focus:ring-1 focus:ring-emerald-500 font-bold font-mono text-center"
+                    />
+                    <span className="text-xs font-semibold text-zinc-650 dark:text-zinc-350">
+                      Hari sebelum tanggal jatuh tempo (pangkat / KGB)
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-zinc-450 dark:text-zinc-500 mt-2 leading-relaxed">
+                    Alarm peringatan pada Dasbor Monitoring akan otomatis aktif menyaring pegawai jika rentang sisa hari menuju KPG (Kenaikan Pangkat), KGB, ataupun batas usulan tunjangan anak berada di bawah angka hari ini.
+                  </p>
+                </div>
+
+                <div className="pt-4 border-t dark:border-zinc-800">
+                  <h4 className="text-xs font-bold text-zinc-700 dark:text-zinc-300 uppercase mb-3 text-left">
+                    Tombol Akses Penyetelan Cepat Rentang Hari
+                  </h4>
+                  <div className="flex flex-wrap gap-2 justify-start">
+                    {[30, 60, 90, 120, 180].map((days) => (
+                      <button
+                        key={days}
+                        onClick={() => {
+                          setAlertThresholdDays(days);
+                          localStorage.setItem("sipeka_alert_threshold", String(days));
+                        }}
+                        className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                          alertThresholdDays === days
+                            ? "bg-emerald-600 border-emerald-600 text-white shadow-xs"
+                            : "bg-zinc-50 hover:bg-zinc-100 border-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-750 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300"
+                        }`}
+                      >
+                        {days} Hari ({Math.round(days / 30)} Bulan)
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Additional kepegawaian settings helper context card */}
+                <div className="bg-zinc-50 dark:bg-zinc-950/40 p-5 rounded-2xl border dark:border-zinc-850/60 text-xs space-y-2 text-left">
+                  <span className="font-bold text-emerald-600 dark:text-emerald-450 block uppercase text-[10px] tracking-wider">
+                    Ketentuan Mandatori Layanan Sipeka:
+                  </span>
+                  <ul className="list-disc list-inside space-y-1.5 text-zinc-500 dark:text-zinc-400 text-[11px] leading-relaxed">
+                    <li>Siklus reguler Kenaikan Pangkat (KPG) PNS bergulir per <strong>4 Tahun sekali</strong> terhitung dari TMT Pangkat Terakhir.</li>
+                    <li>Siklus Kenaikan Gaji Berkala (KGB) otomatis terjadi reguler setiap <strong>2 Tahun sekali</strong>.</li>
+                    <li>Tunjangan anak diayomi s/d batasan usia <strong>21 tahun</strong>, dan diizinkan perpanjangan s/d <strong>25 tahun</strong> bila melampirkan keterangan kuliah aktif yang sah.</li>
+                  </ul>
+                </div>
               </div>
             </div>
           </div>
