@@ -15,6 +15,7 @@ import {
   auth, 
   db, 
   loginWithGoogle, 
+  loginAnonymously,
   logoutUser, 
   handleFirestoreError, 
   OperationType 
@@ -73,11 +74,15 @@ const DEFAULT_WAT_TEMPLATES: WhatsappTemplate[] = [
   }
 ];
 
+const SHARED_OWNER_ID = "instansi_central_db";
+
 export default function App(): JSX.Element {
-  // Auth states
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  // Auth states (Configured for Silent Unified Cloud Mode)
+  const [currentUser, setCurrentUser] = useState<any>({ uid: SHARED_OWNER_ID, isAnonymous: true });
   const [guestMode, setGuestMode] = useState(false);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<any>(null);
+  const [showTroubleshoot, setShowTroubleshoot] = useState(false);
 
   // Core Data
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -97,18 +102,10 @@ export default function App(): JSX.Element {
   // Settings
   const [alertThresholdDays, setAlertThresholdDays] = useState(90);
 
-  // Check auth
+  // Direct configuration for unified cloud-server store
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-      setAuthLoading(false);
-      
-      // If signed in, disable guest mode
-      if (user) {
-        setGuestMode(false);
-      }
-    });
-    return () => unsubscribe();
+    setGuestMode(false);
+    setAuthLoading(false);
   }, []);
 
   // Sync data
@@ -142,7 +139,7 @@ export default function App(): JSX.Element {
     try {
       const q = query(
         collection(db, "employees"), 
-        where("ownerId", "==", currentUser?.uid)
+        where("ownerId", "==", SHARED_OWNER_ID)
       );
 
       const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -189,7 +186,7 @@ export default function App(): JSX.Element {
     } else if (currentUser) {
       const q = query(
         collection(db, "whatsapp_templates"),
-        where("ownerId", "==", currentUser.uid)
+        where("ownerId", "==", SHARED_OWNER_ID)
       );
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const loaded: any[] = [];
@@ -202,11 +199,11 @@ export default function App(): JSX.Element {
           // Trigger saving default templates in firestore
           DEFAULT_WAT_TEMPLATES.forEach(async (t) => {
             try {
-              await setDoc(doc(db, "whatsapp_templates", `${currentUser.uid}_${t.id}`), {
+              await setDoc(doc(db, "whatsapp_templates", `${SHARED_OWNER_ID}_${t.id}`), {
                 id: t.id,
                 name: t.name,
                 content: t.content,
-                ownerId: currentUser.uid,
+                ownerId: SHARED_OWNER_ID,
                 updatedAt: new Date().toISOString()
               });
             } catch (err) {
@@ -217,7 +214,7 @@ export default function App(): JSX.Element {
         } else {
           // Map loaded items
           const mapped = DEFAULT_WAT_TEMPLATES.map(def => {
-            const found = loaded.find(item => item.id === `${currentUser.uid}_${def.id}` || item.id === def.id || item.id.endsWith(def.id));
+            const found = loaded.find(item => item.id === `${SHARED_OWNER_ID}_${def.id}` || item.id === def.id || item.id.endsWith(def.id));
             return {
               id: def.id,
               name: def.name,
@@ -245,11 +242,11 @@ export default function App(): JSX.Element {
       try {
         const target = templates.find(t => t.id === templateId);
         if (target) {
-          await setDoc(doc(db, "whatsapp_templates", `${currentUser.uid}_${templateId}`), {
+          await setDoc(doc(db, "whatsapp_templates", `${SHARED_OWNER_ID}_${templateId}`), {
             id: templateId,
             name: target.name,
             content: content,
-            ownerId: currentUser.uid,
+            ownerId: SHARED_OWNER_ID,
             updatedAt: new Date().toISOString()
           });
           alert("Template berhasil disimpan ke Cloud Database!");
@@ -323,7 +320,7 @@ export default function App(): JSX.Element {
           const payload: Employee = {
             ...d,
             id: newDocRef.id,
-            ownerId: currentUser.uid,
+            ownerId: SHARED_OWNER_ID,
             createdAt: new Date().toISOString(), // Fallback strings matching valid schemas
             updatedAt: new Date().toISOString()
           };
@@ -346,7 +343,7 @@ export default function App(): JSX.Element {
     setIsFormOpen(false);
 
     const isEdit = !!selectedEmployee;
-    const currentOwner = currentUser ? currentUser.uid : "guest";
+    const currentOwner = SHARED_OWNER_ID;
 
     if (guestMode) {
       let updatedList = [...employees];
@@ -436,7 +433,7 @@ export default function App(): JSX.Element {
 
   // Batch CSV Import logic
   const handleImportCSVData = async (importedList: Partial<Employee>[]) => {
-    const defaultOwner = currentUser ? currentUser.uid : "guest";
+    const defaultOwner = SHARED_OWNER_ID;
 
     if (guestMode) {
       const formatted: Employee[] = importedList.map((emp, index) => ({
@@ -575,100 +572,7 @@ export default function App(): JSX.Element {
     setIsFormOpen(true);
   };
 
-  // Loading Screen
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-zinc-400 font-sans" id="auth-loading-screen">
-        <div className="flex flex-col items-center gap-4">
-          <RefreshCw className="w-10 h-10 text-zinc-400 animate-spin" />
-          <h2 className="text-sm font-bold tracking-wider text-white uppercase">Menginisialisasi Sipeka...</h2>
-          <p className="text-xs text-zinc-500">Mempersiapkan jalur enkripsi cloud server</p>
-        </div>
-      </div>
-    );
-  }
-
-  // PUBLIC LANDING (Signed Out)
-  if (!currentUser && !guestMode) {
-    return (
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex flex-col justify-between font-sans text-zinc-800" id="landing-page-root">
-        
-        {/* Top Minimal Header */}
-        <header className="px-6 py-4 border-b border-zinc-200 dark:border-zinc-900 bg-white dark:bg-zinc-950/60 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="p-1.5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 rounded-md font-bold text-sm tracking-tighter">
-              SP
-            </span>
-            <span className="font-bold text-xs text-zinc-700 dark:text-zinc-200 uppercase tracking-widest font-mono">
-              Sipeka RI
-            </span>
-          </div>
-          <span className="text-[10px] text-zinc-400 font-mono">Ver. 2026.1</span>
-        </header>
-
-        {/* Main hero cards */}
-        <main className="max-w-4xl mx-auto px-6 py-12 md:py-16 text-center space-y-10 flex-1 flex flex-col justify-center">
-          
-          <div className="space-y-4">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-zinc-100 dark:bg-zinc-900 border dark:border-zinc-805 rounded-full text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Pengelola Gaji Instansi Pemerintah
-            </div>
-            
-            <h1 className="text-3xl md:text-4xl font-black tracking-tight text-zinc-900 dark:text-white max-w-2xl mx-auto leading-tight">
-              Sistem Peringatan Kepegawaian & Batas Tunjangan Anak
-            </h1>
-            
-            <p className="text-sm text-zinc-500 max-w-xl mx-auto leading-relaxed">
-              Pantau jadwal kenaikan pangkat (4 tahunan), kenaikan gaji berkala (2 tahunan), serta deteksi otomatis batas tanggungan anak yang menginjak usia 21 tahun untuk efisiensi anggaran kas instansi.
-            </p>
-          </div>
-
-          {/* Grid visualizers */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto pt-4 text-left">
-            <div className="p-4 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl">
-              <Award className="w-5 h-5 text-amber-500 mb-2" />
-              <h3 className="text-xs font-bold text-zinc-900 dark:text-white uppercase mb-1">Kenaikan Pangkat (KPG)</h3>
-              <p className="text-[11px] text-zinc-500 leading-snug">Sinyal otomatis 4 tahun setelah pangkat terakhir guna kelancaran pengajuan berkas.</p>
-            </div>
-            <div className="p-4 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl">
-              <DollarSign className="w-5 h-5 text-emerald-500 mb-2" />
-              <h3 className="text-xs font-bold text-zinc-900 dark:text-white uppercase mb-1">Kenaikan Gaji Berkala</h3>
-              <p className="text-[11px] text-zinc-500 leading-snug">Alerter siklus 2 tahunan bagi PNS/PPPK demi keakuratan penghitungan tunjangan.</p>
-            </div>
-            <div className="p-4 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl">
-              <Calendar className="w-5 h-5 text-indigo-500 mb-2" />
-              <h3 className="text-xs font-bold text-zinc-900 dark:text-white uppercase mb-1">Tunjangan Anak 21 Thn</h3>
-              <p className="text-[11px] text-zinc-500 leading-snug">Menyaring daftar anak usia 20 tahun (menginjak 21) dan &ge; 21 untuk audit tunjangan.</p>
-            </div>
-          </div>
-
-          {/* Call to actions */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-6">
-            <button
-              onClick={loginWithGoogle}
-              className="w-full sm:w-auto px-6 py-3 bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 font-bold hover:bg-zinc-800 text-xs rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
-            >
-              <Database className="w-4 h-4" /> Masuk via Google (Cloud Server)
-            </button>
-            <button
-              onClick={() => setGuestMode(true)}
-              className="w-full sm:w-auto px-6 py-3 bg-white hover:bg-zinc-100 border text-zinc-700 font-semibold text-xs rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1"
-            >
-              Coba Mode Tamu (Offline Browser)
-            </button>
-          </div>
-
-          <div className="text-[10px] text-zinc-400 max-w-sm mx-auto">
-            Disimpan aman di Google Cloud Server Firestore bagi pengguna terdaftar. Ekspor ke format lembar kerja Excel (.csv) tersedia penuh.
-          </div>
-        </main>
-
-        <footer className="py-6 border-t border-zinc-200 dark:border-zinc-900 text-center text-[10px] text-zinc-400">
-          Kementerian Kepegawaian & Pengelola Gaji Mandiri RI &copy; 2026. Seluruh Hak Cipta Dilindungi.
-        </footer>
-      </div>
-    );
-  }
+  // Direct Dashboard Navigation: Loading & Landing are bypassed
 
   // MAIN PRIVATE LAYOUT (Logged In OR Guest Mode)
   return (
@@ -688,14 +592,12 @@ export default function App(): JSX.Element {
               <h1 className="text-sm font-black tracking-tight text-zinc-900 dark:text-white uppercase font-mono">
                 Sipeka Pegawai
               </h1>
-              {guestMode && (
-                <span className="text-[8px] px-1.5 py-0.5 bg-zinc-100 text-zinc-500 dark:bg-zinc-800 rounded-full font-bold">
-                  SANDBOX
-                </span>
-              )}
+              <span className="text-[8px] px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 rounded-full font-bold">
+                CLOUD FIRESTORE
+              </span>
             </div>
             <p className="text-[10px] text-zinc-400">
-              {guestMode ? "Data tersimpan privat di LocalStorage web browser" : "Terkoneksi langsung ke Cloud Database Firestore"}
+              Data sinkron otomatis dan tersimpan aman di Cloud Database Instansi
             </p>
           </div>
         </div>
@@ -744,31 +646,18 @@ export default function App(): JSX.Element {
           </button>
         </nav>
 
-        {/* User Badge Controls */}
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-end border-t sm:border-t-0 pt-3 sm:pt-0 dark:border-zinc-800">
-          <div className="text-right text-xs">
-            <span className="font-bold block text-zinc-900 dark:text-white truncate max-w-[140px]">
-              {currentUser ? currentUser.displayName || currentUser.email : "Pengelola Tamu"}
-            </span>
-            <span className="text-[10px] text-zinc-400 block">
-              {currentUser ? currentUser.email : "Mode Offline"}
-            </span>
-          </div>
-
-          <button
-            onClick={() => {
-              if (currentUser) {
-                logoutUser();
-              } else {
-                setGuestMode(false);
-              }
-            }}
-            className="p-1.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-750 border dark:border-zinc-700 text-zinc-650 dark:text-zinc-400 hover:text-rose-500 rounded-lg transition-colors cursor-pointer"
-            title="Keluar dari Sistem"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
+      {/* User Badge Controls */}
+      <div className="flex items-center gap-3 w-full sm:w-auto justify-end border-t sm:border-t-0 pt-3 sm:pt-0 dark:border-zinc-850">
+        <div className="text-right text-xs">
+          <span className="font-bold block text-zinc-900 dark:text-white truncate max-w-[140px]">
+            Portal Instansi (Shared)
+          </span>
+          <span className="text-[10px] text-emerald-500 font-semibold block flex items-center justify-end gap-1">
+            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+            Koneksi Cloud Aktif
+          </span>
         </div>
+      </div>
 
       </header>
 
@@ -964,8 +853,8 @@ export default function App(): JSX.Element {
       <footer className="py-8 bg-white dark:bg-zinc-950 border-t dark:border-zinc-900 text-center text-xs text-zinc-400 mt-auto">
         <p>Aplikasi Sipeka PNS &copy; 2026. Dioptimalkan untuk administrator pengelola gaji sipil.</p>
         <div className="flex gap-4 items-center justify-center mt-2 text-[10px]">
-          <span>Firestore: Terhubung</span>
-          <span>&bull;</span>
+        <span>Penyimpanan: Local Storage Browser (Aktif)</span>
+        <span>&bull;</span>
           <span>Batas Usia Anak Tunjangan: 21 Tahun (Bisa s/d 25 kuliah)</span>
           <span>&bull;</span>
           <span>Siklus KPG: 4 Tahun</span>

@@ -3,7 +3,8 @@ import {
   getAuth, 
   GoogleAuthProvider, 
   signInWithPopup, 
-  signOut 
+  signOut,
+  signInAnonymously
 } from "firebase/auth";
 import { 
   getFirestore, 
@@ -93,6 +94,16 @@ export async function loginWithGoogle() {
     return result.user;
   } catch (error) {
     console.error("Error signing in with Google:", error);
+    throw error;
+  }
+}
+
+export async function loginAnonymously() {
+  try {
+    const result = await signInAnonymously(auth);
+    return result.user;
+  } catch (error) {
+    console.error("Error signing in anonymously:", error);
     throw error;
   }
 }
