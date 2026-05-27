@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Sistem Peringatan Kepegawaian",
+  "description": "Aplikasi pengelola gaji instansi pemerintah untuk memantau jadwal kenaikan pangkat (KPG), kenaikan gaji berkala (KGB), dan batas tunjangan anak (usia 21 tahun).",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

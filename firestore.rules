@@ -1,0 +1,77 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Auth helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(resourceData) {
+      return isSignedIn() && resourceData.ownerId == request.auth.uid;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Strict validator for employee record
+    function isValidEmployee(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.ownerId == request.auth.uid
+        && data.nip is string && data.nip.size() >= 1 && data.nip.size() <= 32
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 128
+        && data.birthDate is string && data.birthDate.size() == 10
+        && data.currentRank is string && data.currentRank.size() >= 1 && data.currentRank.size() <= 32
+        && data.maxRankReached is bool
+        && data.lastPromotionDate is string && data.lastPromotionDate.size() == 10
+        && data.get('lastKgbDate', '') is string && data.get('lastKgbDate', '').size() <= 10
+        && data.get('phoneNumber', '') is string && data.get('phoneNumber', '').size() <= 32
+        && data.children is list && data.children.size() <= 30;
+    }
+
+    match /employees/{employeeId} {
+      allow get: if isSignedIn() && isOwner(resource.data) && isValidId(employeeId);
+      
+      // Forces client to filter lists securely by ownerId
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      
+      allow create: if isSignedIn()
+        && isValidId(employeeId)
+        && request.resource.id == employeeId
+        && isValidEmployee(request.resource.data)
+        && request.resource.data.createdAt is string && request.resource.data.createdAt.size() <= 30
+        && request.resource.data.updatedAt is string && request.resource.data.updatedAt.size() <= 30;
+
+      allow update: if isSignedIn()
+        && isOwner(resource.data)
+        && isValidId(employeeId)
+        && request.resource.id == employeeId
+        && isValidEmployee(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt is string && request.resource.data.updatedAt.size() <= 30
+        && request.resource.data.ownerId == resource.data.ownerId
+        && (
+          // Action standard updates
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'nip', 'name', 'birthDate', 'currentRank', 'maxRankReached', 
+            'lastPromotionDate', 'lastKgbDate', 'children', 'updatedAt', 'phoneNumber'
+          ])
+        );
+
+      allow delete: if isSignedIn() && isOwner(resource.data) && isValidId(employeeId);
+    }
+
+    match /whatsapp_templates/{templateId} {
+      allow read: if isSignedIn() && (resource == null || resource.data.ownerId == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.ownerId == request.auth.uid && request.resource.data.ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
+  }
+}

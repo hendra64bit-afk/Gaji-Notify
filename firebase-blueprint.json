@@ -1,0 +1,78 @@
+{
+  "entities": {
+    "Employee": {
+      "title": "Employee",
+      "description": "Data pegawai instansi pemerintah termasuk riwayat pangkat, KGB, dan anak",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "ID unik dokumen pegawai"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "UID pemilik/pengelola gaji yang membuat data"
+        },
+        "nip": {
+          "type": "string",
+          "description": "Nomor Induk Pegawai 18 digit"
+        },
+        "name": {
+          "type": "string",
+          "description": "Nama lengkap pegawai"
+        },
+        "birthDate": {
+          "type": "string",
+          "description": "Tanggal lahir pegawai (YYYY-MM-DD)"
+        },
+        "currentRank": {
+          "type": "string",
+          "description": "Golongan ruang pangkat terakhir (e.g., III/a)"
+        },
+        "maxRankReached": {
+          "type": "boolean",
+          "description": "Flag apakah pegawai sudah mencapai puncak pangkat tertinggi"
+        },
+        "lastPromotionDate": {
+          "type": "string",
+          "description": "Tanggal kenaikan pangkat terakhir (YYYY-MM-DD)"
+        },
+        "lastKgbDate": {
+          "type": "string",
+          "description": "Tanggal kenaikan gaji berkala terakhir (YYYY-MM-DD)"
+        },
+        "children": {
+          "type": "array",
+          "description": "Daftar anak pegawai"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Waktu pembuatan data"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Waktu pembaharuan data"
+        }
+      },
+      "required": [
+        "id",
+        "ownerId",
+        "nip",
+        "name",
+        "birthDate",
+        "currentRank",
+        "maxRankReached",
+        "lastPromotionDate",
+        "children",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/employees/{employeeId}": {
+      "schema": "Employee",
+      "description": "Daftar pegawai yang dikelola oleh pengelola gaji"
+    }
+  }
+}
