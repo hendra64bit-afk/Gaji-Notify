@@ -81,7 +81,7 @@ async function testConnection() {
     console.log("Firebase connection established successfully.");
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration (client is offline).");
+      console.warn("Please check your Firebase configuration (client is offline). Sipeka will operate in offline/local fallback.");
     }
   }
 }

@@ -80,9 +80,10 @@ const SHARED_OWNER_ID = "instansi_central_db";
 export default function App(): JSX.Element {
   // Auth states (Configured for Silent Unified Cloud Mode)
   const [currentUser, setCurrentUser] = useState<any>({ uid: SHARED_OWNER_ID, isAnonymous: true });
-  const [guestMode, setGuestMode] = useState(false);
+  const [guestMode, setGuestMode] = useState(() => localStorage.getItem("sipeka_guest_mode") === "true");
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<any>(null);
+  const [firestoreError, setFirestoreError] = useState<string | null>(null);
   const [showTroubleshoot, setShowTroubleshoot] = useState(false);
 
   // Core Data
@@ -110,7 +111,6 @@ export default function App(): JSX.Element {
 
   // Direct configuration for unified cloud-server store
   useEffect(() => {
-    setGuestMode(false);
     setAuthLoading(false);
   }, []);
 
@@ -155,10 +155,35 @@ export default function App(): JSX.Element {
         });
         setEmployees(list);
         setDbLoading(false);
+        setFirestoreError(null);
       }, (error) => {
-        // Log clean error payload mapping to rules
-        handleFirestoreError(error, OperationType.LIST, "employees");
         setDbLoading(false);
+        const errMsg = error instanceof Error ? error.message : String(error);
+        const isOfflineError = errMsg.includes("offline") || errMsg.includes("Could not reach Cloud Firestore") || errMsg.includes("Backend didn't respond") || errMsg.includes("failed-precondition") || errMsg.includes("network");
+        
+        if (isOfflineError) {
+          console.warn("Firestore onSnapshot offline fallback: ", errMsg);
+          setFirestoreError("Koneksi cloud offline (tidak dapat menjangkau server Firestore). Sistem otomatis beralih menggunakan basis data lokal offline.");
+          
+          // Switch flag of guestMode safely so that other components operate offline too
+          setGuestMode(true);
+          
+          // Load from local storage
+          const saved = localStorage.getItem("sipeka_local_employees");
+          if (saved) {
+            try {
+              setEmployees(JSON.parse(saved));
+            } catch (e) {
+              console.error("Gagal membaca LocalStorage fallback:", e);
+            }
+          }
+        } else {
+          try {
+            handleFirestoreError(error, OperationType.LIST, "employees");
+          } catch (thrownErr: any) {
+            setFirestoreError(thrownErr.message);
+          }
+        }
       });
 
       return () => unsubscribe();
@@ -229,8 +254,31 @@ export default function App(): JSX.Element {
           });
           setTemplates(mapped);
         }
-      }, (err) => {
-        handleFirestoreError(err, OperationType.LIST, "whatsapp_templates");
+      }, (error) => {
+        const errMsg = error instanceof Error ? error.message : String(error);
+        const isOfflineError = errMsg.includes("offline") || errMsg.includes("Could not reach Cloud Firestore") || errMsg.includes("Backend didn't respond") || errMsg.includes("failed-precondition") || errMsg.includes("network");
+        
+        if (isOfflineError) {
+          console.warn("Firestore templates sync offline: ", errMsg);
+          
+          const saved = localStorage.getItem("sipeka_local_whatsapp_templates");
+          if (saved) {
+            try {
+              setTemplates(JSON.parse(saved));
+            } catch (e) {
+              console.error("Gagal membaca LocalStorage templates:", e);
+              setTemplates(DEFAULT_WAT_TEMPLATES);
+            }
+          } else {
+            setTemplates(DEFAULT_WAT_TEMPLATES);
+          }
+        } else {
+          try {
+            handleFirestoreError(error, OperationType.LIST, "whatsapp_templates");
+          } catch (thrownErr: any) {
+            setFirestoreError(thrownErr.message);
+          }
+        }
       });
       return () => unsubscribe();
     }
@@ -591,19 +639,27 @@ export default function App(): JSX.Element {
         <div className="flex items-center gap-3 w-full sm:w-auto text-left">
           <div className="w-9 h-9 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 rounded-xl flex items-center justify-center font-black text-sm relative">
             S
-            <span className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border border-white"></span>
+            <span className={`absolute -bottom-1 -right-1 w-3 h-3 ${guestMode ? "bg-amber-500" : "bg-emerald-500"} rounded-full border border-white`}></span>
           </div>
           <div>
             <div className="flex items-center gap-1.5">
               <h1 className="text-sm font-black tracking-tight text-zinc-900 dark:text-white uppercase font-mono">
                 Sipeka Pegawai
               </h1>
-              <span className="text-[8px] px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 rounded-full font-bold">
-                CLOUD FIRESTORE
-              </span>
+              {guestMode ? (
+                <span className="text-[8px] px-1.5 py-0.5 bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 rounded-full font-bold uppercase">
+                  Penyimpanan Lokal (Offline)
+                </span>
+              ) : (
+                <span className="text-[8px] px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 rounded-full font-bold uppercase">
+                  Cloud Firestore
+                </span>
+              )}
             </div>
             <p className="text-[10px] text-zinc-400">
-              Data sinkron otomatis dan tersimpan aman di Cloud Database Instansi
+              {guestMode 
+                ? "Bekerja secara offline menggunakan memori perangkat lokal Anda" 
+                : "Data sinkron otomatis dan tersimpan aman di Cloud Database Instansi"}
             </p>
           </div>
         </div>
@@ -662,24 +718,68 @@ export default function App(): JSX.Element {
           </button>
         </nav>
 
-      {/* User Badge Controls */}
-      <div className="flex items-center gap-3 w-full sm:w-auto justify-end border-t sm:border-t-0 pt-3 sm:pt-0 dark:border-zinc-850">
-        <div className="text-right text-xs">
-          <span className="font-bold block text-zinc-900 dark:text-white truncate max-w-[140px]">
-            Portal Instansi (Shared)
-          </span>
-          <span className="text-[10px] text-emerald-500 font-semibold block flex items-center justify-end gap-1">
-            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-            Koneksi Cloud Aktif
-          </span>
+        {/* User Badge Controls */}
+        <div className="flex items-center gap-3 w-full sm:w-auto justify-end border-t sm:border-t-0 pt-3 sm:pt-0 dark:border-zinc-850">
+          <div className="text-right text-xs">
+            <span className="font-bold block text-zinc-900 dark:text-white truncate max-w-[140px]">
+              Portal Instansi (Shared)
+            </span>
+            {guestMode ? (
+              <span className="text-[10px] text-amber-500 font-semibold block flex items-center justify-end gap-1">
+                <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></span>
+                Mode Lokal (Offline)
+              </span>
+            ) : (
+              <span className="text-[10px] text-emerald-500 font-semibold block flex items-center justify-end gap-1">
+                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                Koneksi Cloud Aktif
+              </span>
+            )}
+          </div>
         </div>
-      </div>
 
       </header>
 
       {/* Main Container */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-8 space-y-8" id="private-main-body">
         
+        {/* Firestore Offline / Connection Error Alert Banner */}
+        {firestoreError && (
+          <div className="p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 text-amber-900 dark:text-amber-200 rounded-2xl text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+              <div className="space-y-1 text-left">
+                <span className="font-bold block uppercase tracking-wide text-amber-800 dark:text-amber-300">Pemberitahuan Sistem (Offline / Kendala Koneksi)</span>
+                <p className="text-zinc-550 dark:text-zinc-400 leading-relaxed text-[11px]">
+                  Aplikasi mendeteksi kendala dalam menyambung ke jaringan Cloud Firestore. Sistem otomatis mengaktifkan Penyimpanan Lokal Offline sehingga Anda tetap dapat memasukkan dan memodifikasi data kepegawaian Anda dengan lancar.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
+              <button
+                onClick={() => {
+                  setGuestMode(true);
+                  localStorage.setItem("sipeka_guest_mode", "true");
+                  setFirestoreError(null);
+                }}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg transition-all shadow-xs shrink-0 cursor-pointer whitespace-nowrap text-xs"
+              >
+                Gunakan Offline Lokal
+              </button>
+              <button
+                onClick={() => {
+                  setFirestoreError(null);
+                  setDbLoading(true);
+                  window.location.reload();
+                }}
+                className="px-3 py-1.5 bg-zinc-100 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 font-bold rounded-lg transition-all shrink-0 cursor-pointer whitespace-nowrap text-xs"
+              >
+                Coba Hubungkan Kembali
+              </button>
+            </div>
+          </div>
+        )}
+
         {dbLoading && (
           <div className="p-3 bg-zinc-900 text-white rounded-xl text-xs font-mono flex items-center gap-2 justify-center shadow-md animate-pulse">
             <RefreshCw className="w-3.5 h-3.5 animate-spin text-zinc-400" />
@@ -1054,6 +1154,50 @@ export default function App(): JSX.Element {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* Database Synchronization Source Controller */}
+                <div className="pt-4 border-t dark:border-zinc-800">
+                  <h4 className="text-xs font-bold text-zinc-700 dark:text-zinc-300 uppercase mb-3 text-left">
+                    Sumber Sinkronisasi Data (Cloud vs Lokal)
+                  </h4>
+                  <div className="flex gap-4 items-center">
+                    <button
+                      onClick={() => {
+                        setGuestMode(false);
+                        localStorage.setItem("sipeka_guest_mode", "false");
+                        window.location.reload();
+                      }}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                        !guestMode
+                          ? "bg-emerald-600 border-emerald-600 text-white shadow-xs"
+                          : "bg-zinc-50 hover:bg-zinc-100 border-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-750 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300"
+                      }`}
+                    >
+                      Cloud Firestore
+                    </button>
+                    <button
+                      onClick={() => {
+                        setGuestMode(true);
+                        localStorage.setItem("sipeka_guest_mode", "true");
+                        // Prepopulate local storage with demo or existing data if empty
+                        const saved = localStorage.getItem("sipeka_local_employees");
+                        if (!saved && employees.length > 0) {
+                          localStorage.setItem("sipeka_local_employees", JSON.stringify(employees));
+                        }
+                      }}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                        guestMode
+                          ? "bg-amber-600 border-amber-600 text-white shadow-xs"
+                          : "bg-zinc-50 hover:bg-zinc-100 border-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-750 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300"
+                      }`}
+                    >
+                      Mode Offline (Lokal)
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-zinc-450 dark:text-zinc-500 mt-2 leading-relaxed text-left">
+                    Database Cloud sinkron otomatis antar-perangkat lewat server instansi. Gunakan Mode Offline (Lokal) jika menemui kendala jaringan atau ingin mencoba database mandiri di memori browser Anda.
+                  </p>
                 </div>
 
                 {/* Additional kepegawaian settings helper context card */}

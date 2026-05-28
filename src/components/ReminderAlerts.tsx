@@ -529,12 +529,12 @@ export default function ReminderAlerts({
                   Jadwal Kenaikan Gaji Berkala (KGB) — Siklus 2 Tahunan
                 </h3>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  Monitoring kenaikan gaji PNS berkala setiap 2 tahun dari kenaikan pangkat terakhir (KPG)
+                  Monitoring kenaikan gaji PNS berkala setiap 2 tahun dari kenaikan gaji berkala (KGB) terakhir, atau dari KPG jika KGB terakhir kosong
                 </p>
               </div>
             </div>
           </div>
-
+ 
           <div className="overflow-x-auto">
             {displayKgb.length === 0 ? (
               <div className="p-8 text-center text-xs text-zinc-500">
@@ -546,7 +546,7 @@ export default function ReminderAlerts({
                   <tr>
                     <th className="px-6 py-3">Nama / NIP</th>
                     <th className="px-6 py-3">Golongan</th>
-                    <th className="px-6 py-3">KPG Terakhir</th>
+                    <th className="px-6 py-3">KGB Terakhir / KPG</th>
                     <th className="px-6 py-3">Jadwal KGB Berikutnya</th>
                     <th className="px-6 py-3">Sisa Waktu</th>
                     <th className="px-6 py-3 text-right print:hidden">Tindakan</th>
@@ -568,7 +568,7 @@ export default function ReminderAlerts({
                             {k.employee.currentRank}
                           </span>
                         </td>
-                        <td className="px-6 py-4">{formatDateIndo(k.employee.lastPromotionDate)}</td>
+                        <td className="px-6 py-4">{formatDateIndo(k.employee.lastKgbDate || k.employee.lastPromotionDate)}</td>
                         <td className="px-6 py-4 font-bold text-zinc-950 dark:text-white">{formatDateIndo(k.dueDate)}</td>
                         <td className="px-6 py-4">{getStatusBadge(k.status, k.daysRemaining)}</td>
                         <td className="px-6 py-4 text-right print:hidden">

@@ -116,8 +116,9 @@ export interface KgbAlert {
 
 export function getKgbAlerts(employees: Employee[], refDate: Date = getCurrentDate(), alertThresholdDays = 90): KgbAlert[] {
   return employees.map(emp => {
-    // KGB is 2 years after last promotion date
-    const dueDate = addYearsToDate(emp.lastPromotionDate, 2);
+    // KGB is 2 years after last KGB date if available, otherwise 2 years after last promotion date
+    const baseDate = emp.lastKgbDate || emp.lastPromotionDate;
+    const dueDate = addYearsToDate(baseDate, 2);
     const daysRemaining = getDaysDifference(dueDate, refDate);
 
     let status: "overdue" | "critical" | "upcoming" | "safe" = "safe";
